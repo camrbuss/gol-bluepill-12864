@@ -1,0 +1,41 @@
+{
+  "env": {
+    "myDefaultIncludePath": [
+      "${workspaceFolder}",
+      "${workspaceFolder}/gol-bluepill-12864-src"
+    ],
+    "myCompilerPath": "/usr/bin/arm-none-eabi-gcc"
+  },
+  "configurations": [
+    {
+      "name": "Linux",
+      "intelliSenseMode": "gcc-x64",
+      "includePath": ["${myDefaultIncludePath}", "libopencm3/include"],
+      "forcedInclude": [
+        "${workspaceFolder}/libopencm3/include/libopencm3/stm32/f1/adc.h",
+        "${workspaceFolder}/libopencm3/include/libopencm3/stm32/f1/bkp.h",
+        "${workspaceFolder}/libopencm3/include/libopencm3/stm32/f1/crc.h",
+        "${workspaceFolder}/libopencm3/include/libopencm3/stm32/f1/dac.h",
+        "${workspaceFolder}/libopencm3/include/libopencm3/stm32/f1/dma.h",
+        "${workspaceFolder}/libopencm3/include/libopencm3/stm32/f1/doc-stm32f1.h",
+        "${workspaceFolder}/libopencm3/include/libopencm3/stm32/f1/exti.h",
+        "${workspaceFolder}/libopencm3/include/libopencm3/stm32/f1/flash.h",
+        "${workspaceFolder}/libopencm3/include/libopencm3/stm32/f1/gpio.h",
+        "${workspaceFolder}/libopencm3/include/libopencm3/stm32/f1/i2c.h",
+        "${workspaceFolder}/libopencm3/include/libopencm3/stm32/f1/irq.json",
+        "${workspaceFolder}/libopencm3/include/libopencm3/stm32/f1/iwdg.h",
+        "${workspaceFolder}/libopencm3/include/libopencm3/stm32/f1/memorymap.h",
+        "${workspaceFolder}/libopencm3/include/libopencm3/stm32/f1/nvic.h",
+        "${workspaceFolder}/libopencm3/include/libopencm3/stm32/f1/pwr.h",
+        "${workspaceFolder}/libopencm3/include/libopencm3/stm32/f1/rcc.h",
+        "${workspaceFolder}/libopencm3/include/libopencm3/stm32/f1/rtc.h",
+        "${workspaceFolder}/libopencm3/include/libopencm3/stm32/f1/spi.h",
+        "${workspaceFolder}/libopencm3/include/libopencm3/stm32/f1/st_usbfs.h",
+        "${workspaceFolder}/libopencm3/include/libopencm3/stm32/f1/timer.h",
+        "${workspaceFolder}/libopencm3/include/libopencm3/stm32/f1/usart.h"
+      ],
+      "cStandard": "c11"
+    }
+  ],
+  "version": 4
+}
