@@ -134,6 +134,7 @@ int main(void) {
   spi_setup();
 
   randomize_state();
+  randomize_state();
 
   // Let display power on
   us_delay(0xFFFF);
@@ -144,22 +145,80 @@ int main(void) {
   init_display(true);
 
   arr_p *screen = &state;
+  memcpy(future_state, state, sizeof(state));
+  arr_p *future_screen = &future_state;
 
   while (1) {
     // gpio_toggle(GPIOC, GPIO13);
     us_delay(0xFFFF);
-    us_delay(0xFFFF);
-    us_delay(0xFFFF);
-    us_delay(0xFFFF);
-    us_delay(0xFFFF);
-    us_delay(0xFFFF);
-    us_delay(0xFFFF);
-    us_delay(0xFFFF);
-    us_delay(0xFFFF);
-    us_delay(0xFFFF);
-    us_delay(0xFFFF);
-    randomize_state();
+
     draw_entire_display(screen);
+
+    memcpy(state, future_state, sizeof(state));
+
+    for (uint8_t i = 0; i < SCREEN_WIDTH; i++) {
+      for (uint8_t j = 0; j < SCREEN_HEIGHT; j++) {
+        uint8_t sum = 0;
+        if (i == 0) {
+          sum += (*screen)[i + 1][j + 0] & 0x01;
+          if (j == 0) {
+            sum += (*screen)[i + 1][j + 1] & 0x01;
+            sum += (*screen)[i + 0][j + 1] & 0x01;
+          } else if (j == SCREEN_HEIGHT - 1) {
+            sum += (*screen)[i + 1][j - 1] & 0x01;
+            sum += (*screen)[i + 0][j - 1] & 0x01;
+          } else {
+            sum += (*screen)[i + 0][j - 1] & 0x01;
+            sum += (*screen)[i + 1][j - 1] & 0x01;
+            sum += (*screen)[i + 1][j + 1] & 0x01;
+            sum += (*screen)[i + 0][j + 1] & 0x01;
+          }
+        } else if (i == SCREEN_WIDTH - 1) {
+          sum += (*screen)[i - 1][j + 0] & 0x01;
+          if (j == 0) {
+            sum += (*screen)[i - 1][j + 1] & 0x01;
+            sum += (*screen)[i + 0][j + 1] & 0x01;
+          } else if (j == SCREEN_HEIGHT - 1) {
+            sum += (*screen)[i - 1][j - 1] & 0x01;
+            sum += (*screen)[i + 0][j - 1] & 0x01;
+          } else {
+            sum += (*screen)[i + 0][j - 1] & 0x01;
+            sum += (*screen)[i - 1][j - 1] & 0x01;
+            sum += (*screen)[i - 1][j + 1] & 0x01;
+            sum += (*screen)[i + 0][j + 1] & 0x01;
+          }
+        } else if (j == 0) {
+          sum += (*screen)[i - 1][j + 0] & 0x01;
+          sum += (*screen)[i - 1][j + 1] & 0x01;
+          sum += (*screen)[i + 0][j + 1] & 0x01;
+          sum += (*screen)[i + 1][j + 1] & 0x01;
+          sum += (*screen)[i + 1][j + 0] & 0x01;
+        } else if (j == SCREEN_HEIGHT - 1) {
+          sum += (*screen)[i - 1][j + 0] & 0x01;
+          sum += (*screen)[i - 1][j - 1] & 0x01;
+          sum += (*screen)[i + 0][j - 1] & 0x01;
+          sum += (*screen)[i + 1][j - 1] & 0x01;
+          sum += (*screen)[i + 1][j + 0] & 0x01;
+        } else {
+          sum += (*screen)[i + 1][j + 1] & 0x01;
+          sum += (*screen)[i + 1][j + 0] & 0x01;
+          sum += (*screen)[i + 1][j - 1] & 0x01;
+          sum += (*screen)[i - 1][j + 1] & 0x01;
+          sum += (*screen)[i - 1][j + 0] & 0x01;
+          sum += (*screen)[i - 1][j - 1] & 0x01;
+          sum += (*screen)[i + 0][j + 1] & 0x01;
+          sum += (*screen)[i + 0][j - 1] & 0x01;
+        }
+
+        if ((*screen)[i][j] && sum == 2) {
+          (*future_screen)[i][j] = 1;
+        } else if (sum == 3) {
+          (*future_screen)[i][j] = 1;
+        } else {
+          (*future_screen)[i][j] = 0;
+        }
+      }
+    }
   }
 
   return 0;

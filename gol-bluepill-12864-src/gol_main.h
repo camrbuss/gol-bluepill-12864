@@ -32,6 +32,7 @@ static void randomize_state(void);
 int main(void);
 
 static uint8_t state[SCREEN_WIDTH][SCREEN_HEIGHT] = {0};
+static uint8_t future_state[SCREEN_WIDTH][SCREEN_HEIGHT] = {0};
 
 // Random initial state with deterministic future states :(
 static uint32_t random_state[SCREEN_HEIGHT * SCREEN_WIDTH / 32] = {
