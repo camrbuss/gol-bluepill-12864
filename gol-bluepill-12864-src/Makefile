@@ -2,6 +2,7 @@ PROJECT = gol-bluepill-12864
 BUILD_DIR = bin
 
 CFILES = gol_main.c
+CFILES += st7920_helper.c
 
 DEVICE=stm32f103c8
 OOCD_FILE = target/stm32f1x.cfg
