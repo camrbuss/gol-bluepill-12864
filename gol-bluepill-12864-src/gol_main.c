@@ -20,20 +20,46 @@
 static void clock_setup(void) {
   rcc_clock_setup_pll(&rcc_hse_configs[RCC_CLOCK_HSE8_72MHZ]);
   rcc_periph_clock_enable(RCC_GPIOC);
+  rcc_periph_clock_enable(RCC_GPIOB);
   rcc_periph_clock_enable(RCC_GPIOA);
-
+  rcc_periph_clock_enable(RCC_TIM2);
   rcc_periph_clock_enable(RCC_SPI1);
+
+  // Enable AFIO for EXTI interrupts
+  rcc_periph_clock_enable(RCC_AFIO);
 }
 
+// Using SPI1 Default Pins
 // SCK - Master - Alternate function push-pull
 // COPI - - Aliternate function push-pull
 // PA5 SCK Alternate function 0
 // PA7 COPI Alternate function 0
 
 static void gpio_setup(void) {
+  // Bluepill PC13 LED
   gpio_set_mode(GPIOC, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_PUSHPULL,
                 GPIO13);
+  // PB1 Button Switch, PB10 Enc A, PB11 Enc B, all input pull-up
+  gpio_set_mode(GPIOB, GPIO_MODE_INPUT, GPIO_CNF_INPUT_PULL_UPDOWN, GPIO1);
+  gpio_set_mode(GPIOB, GPIO_MODE_INPUT, GPIO_CNF_INPUT_PULL_UPDOWN, GPIO10);
+  gpio_set_mode(GPIOB, GPIO_MODE_INPUT, GPIO_CNF_INPUT_PULL_UPDOWN, GPIO11);
+  gpio_set(GPIOB, GPIO1);
+  gpio_set(GPIOB, GPIO10);
+  gpio_set(GPIOB, GPIO11);
 
+  // Enable PB1 External Interrupt
+  nvic_enable_irq(NVIC_EXTI1_IRQ);
+  exti_select_source(EXTI1, GPIOB);
+  exti_set_trigger(EXTI1, EXTI_TRIGGER_FALLING);
+  exti_enable_request(EXTI1);
+
+  // Enable PB10 and PB11 External Interrupt
+  nvic_enable_irq(NVIC_EXTI15_10_IRQ);
+  exti_select_source(EXTI10 | EXTI11, GPIOB);
+  exti_set_trigger(EXTI10 | EXTI11, EXTI_TRIGGER_BOTH);
+  exti_enable_request(EXTI10 | EXTI11);
+
+  // Set PA5 and PA7 as SCK and COPI respectively
   gpio_set_mode(GPIOA, GPIO_MODE_OUTPUT_50_MHZ, GPIO_CNF_OUTPUT_ALTFN_PUSHPULL,
                 GPIO5 | GPIO7);
 }
@@ -48,17 +74,85 @@ static void spi_setup(void) {
   spi_enable(SPI1);
 }
 
-static void randomize_state(void) {
-  // Update random_state with Marsaglia's Xorshift
-  // https://en.wikipedia.org/wiki/Xorshift
-  for (uint32_t i = 0; i < (SCREEN_HEIGHT * SCREEN_WIDTH / 32); i++) {
-    uint32_t x = random_state[i];
-    x ^= x << 13;
-    x ^= x >> 7;
-    x ^= x << 17;
-    random_state[i] = x;
+static void timer_setup(void) {
+  nvic_enable_irq(NVIC_TIM2_IRQ);
+  rcc_periph_reset_pulse(RST_TIM2);
+  timer_set_mode(TIM2, TIM_CR1_CKD_CK_INT, TIM_CR1_CMS_EDGE, TIM_CR1_DIR_UP);
+  timer_disable_preload(TIM2);
+  timer_continuous_mode(TIM2);
+  // frequency = 72 MHz / 7200 = 10KHz
+  timer_set_prescaler(TIM2, 7200);
+  timer_set_period(TIM2, encoder_count);
+  timer_enable_counter(TIM2);
+  timer_enable_irq(TIM2, TIM_DIER_CC1IE);
+}
+
+void exti1_isr(void) {
+  exti_reset_request(EXTI1);
+  uint32_t flag = exti_get_flag_status(EXTI1);
+  uint16_t pins_state = gpio_port_read(GPIOB);
+
+  // If PB1 is 0, the button was pressed
+  if (~pins_state & GPIO1) {
+    button_pressed = true;
+  }
+}
+
+void exti15_10_isr(void) {
+  uint32_t flag10 = exti_get_flag_status(EXTI10);
+  uint32_t flag11 = exti_get_flag_status(EXTI11);
+  exti_reset_request(EXTI10 | EXTI11);
+  uint16_t pins_state = gpio_port_read(GPIOB);
+  bool pin10 = (pins_state & EXTI10) ? true : false;
+  bool pin11 = (pins_state & EXTI11) ? true : false;
+
+  // Pin 10 caused interrupt
+  if (flag10) {
+    if (pin10 != pin11) {
+      encoder_count += ENCODER_INCREMENT_AMOUNT;
+    } else {
+      encoder_count -= ENCODER_INCREMENT_AMOUNT;
+    }
+  } else if (flag11) {
+    if (pin10 == pin11) {
+      encoder_count += ENCODER_INCREMENT_AMOUNT;
+    } else {
+      encoder_count -= ENCODER_INCREMENT_AMOUNT;
+    }
+  } else {
+    // How did we end up here?
   }
 
+  if (encoder_count > MAX_PLAY_RATE_MS * 10) {
+    encoder_count = MAX_PLAY_RATE_MS * 10;
+  }
+  if (encoder_count < MIN_PLAY_RATE_MS * 10) {
+    encoder_count = MIN_PLAY_RATE_MS * 10;
+  }
+}
+
+void tim2_isr(void) {
+  timer_clear_flag(TIM2, TIM_SR_CC1IF);
+  play_game = true;
+  timer_set_counter(TIM2, 0);
+  timer_set_period(TIM2, encoder_count);
+}
+
+static void shift_randomn_state(uint8_t num) {
+  for (uint8_t i = 0; i < num; i++) {
+    // Update random_state with Marsaglia's Xorshift
+    // https://en.wikipedia.org/wiki/Xorshift
+    for (uint32_t j = 0; j < (SCREEN_HEIGHT * SCREEN_WIDTH / 32); j++) {
+      uint32_t x = random_state[j];
+      x ^= x << 13;
+      x ^= x >> 7;
+      x ^= x << 17;
+      random_state[j] = x;
+    }
+  }
+}
+
+static void randomize_state(void) {
   // Bring each bit of the random_state to the first bit of state
   for (uint8_t i = 0; i < SCREEN_WIDTH; i++) {
     state[i][0] = (random_state[i] >> 0) & 0x01;
@@ -132,8 +226,9 @@ int main(void) {
   clock_setup();
   gpio_setup();
   spi_setup();
+  timer_setup();
 
-  randomize_state();
+  shift_randomn_state(2);
   randomize_state();
 
   // Let display power on
@@ -149,73 +244,82 @@ int main(void) {
   arr_p *future_screen = &future_state;
 
   while (1) {
-    // gpio_toggle(GPIOC, GPIO13);
-    us_delay(0xFFFF);
+    // Interrupt sets button_pressed
+    if (button_pressed) {
+      button_pressed = false;
+      shift_randomn_state(timer_get_counter(TIM2) % 0xFF);
+      randomize_state();
+      memcpy(future_state, state, sizeof(state));
+    }
 
-    draw_entire_display(screen);
+    // TIM2 interrupt sets play game
+    // Current implementation makes the edges dead
+    if (play_game) {
+      play_game = false;
+      draw_entire_display(screen);
+      memcpy(state, future_state, sizeof(state));
 
-    memcpy(state, future_state, sizeof(state));
-
-    for (uint8_t i = 0; i < SCREEN_WIDTH; i++) {
-      for (uint8_t j = 0; j < SCREEN_HEIGHT; j++) {
-        uint8_t sum = 0;
-        if (i == 0) {
-          sum += (*screen)[i + 1][j + 0] & 0x01;
-          if (j == 0) {
-            sum += (*screen)[i + 1][j + 1] & 0x01;
-            sum += (*screen)[i + 0][j + 1] & 0x01;
-          } else if (j == SCREEN_HEIGHT - 1) {
-            sum += (*screen)[i + 1][j - 1] & 0x01;
-            sum += (*screen)[i + 0][j - 1] & 0x01;
-          } else {
-            sum += (*screen)[i + 0][j - 1] & 0x01;
-            sum += (*screen)[i + 1][j - 1] & 0x01;
-            sum += (*screen)[i + 1][j + 1] & 0x01;
-            sum += (*screen)[i + 0][j + 1] & 0x01;
-          }
-        } else if (i == SCREEN_WIDTH - 1) {
-          sum += (*screen)[i - 1][j + 0] & 0x01;
-          if (j == 0) {
+      for (uint8_t i = 0; i < SCREEN_WIDTH; i++) {
+        for (uint8_t j = 0; j < SCREEN_HEIGHT; j++) {
+          uint8_t sum = 0;
+          if (i == 0) {
+            sum += (*screen)[i + 1][j + 0] & 0x01;
+            if (j == 0) {
+              sum += (*screen)[i + 1][j + 1] & 0x01;
+              sum += (*screen)[i + 0][j + 1] & 0x01;
+            } else if (j == SCREEN_HEIGHT - 1) {
+              sum += (*screen)[i + 1][j - 1] & 0x01;
+              sum += (*screen)[i + 0][j - 1] & 0x01;
+            } else {
+              sum += (*screen)[i + 0][j - 1] & 0x01;
+              sum += (*screen)[i + 1][j - 1] & 0x01;
+              sum += (*screen)[i + 1][j + 1] & 0x01;
+              sum += (*screen)[i + 0][j + 1] & 0x01;
+            }
+          } else if (i == SCREEN_WIDTH - 1) {
+            sum += (*screen)[i - 1][j + 0] & 0x01;
+            if (j == 0) {
+              sum += (*screen)[i - 1][j + 1] & 0x01;
+              sum += (*screen)[i + 0][j + 1] & 0x01;
+            } else if (j == SCREEN_HEIGHT - 1) {
+              sum += (*screen)[i - 1][j - 1] & 0x01;
+              sum += (*screen)[i + 0][j - 1] & 0x01;
+            } else {
+              sum += (*screen)[i + 0][j - 1] & 0x01;
+              sum += (*screen)[i - 1][j - 1] & 0x01;
+              sum += (*screen)[i - 1][j + 1] & 0x01;
+              sum += (*screen)[i + 0][j + 1] & 0x01;
+            }
+          } else if (j == 0) {
+            sum += (*screen)[i - 1][j + 0] & 0x01;
             sum += (*screen)[i - 1][j + 1] & 0x01;
             sum += (*screen)[i + 0][j + 1] & 0x01;
+            sum += (*screen)[i + 1][j + 1] & 0x01;
+            sum += (*screen)[i + 1][j + 0] & 0x01;
           } else if (j == SCREEN_HEIGHT - 1) {
+            sum += (*screen)[i - 1][j + 0] & 0x01;
             sum += (*screen)[i - 1][j - 1] & 0x01;
             sum += (*screen)[i + 0][j - 1] & 0x01;
+            sum += (*screen)[i + 1][j - 1] & 0x01;
+            sum += (*screen)[i + 1][j + 0] & 0x01;
           } else {
-            sum += (*screen)[i + 0][j - 1] & 0x01;
-            sum += (*screen)[i - 1][j - 1] & 0x01;
+            sum += (*screen)[i + 1][j + 1] & 0x01;
+            sum += (*screen)[i + 1][j + 0] & 0x01;
+            sum += (*screen)[i + 1][j - 1] & 0x01;
             sum += (*screen)[i - 1][j + 1] & 0x01;
+            sum += (*screen)[i - 1][j + 0] & 0x01;
+            sum += (*screen)[i - 1][j - 1] & 0x01;
             sum += (*screen)[i + 0][j + 1] & 0x01;
+            sum += (*screen)[i + 0][j - 1] & 0x01;
           }
-        } else if (j == 0) {
-          sum += (*screen)[i - 1][j + 0] & 0x01;
-          sum += (*screen)[i - 1][j + 1] & 0x01;
-          sum += (*screen)[i + 0][j + 1] & 0x01;
-          sum += (*screen)[i + 1][j + 1] & 0x01;
-          sum += (*screen)[i + 1][j + 0] & 0x01;
-        } else if (j == SCREEN_HEIGHT - 1) {
-          sum += (*screen)[i - 1][j + 0] & 0x01;
-          sum += (*screen)[i - 1][j - 1] & 0x01;
-          sum += (*screen)[i + 0][j - 1] & 0x01;
-          sum += (*screen)[i + 1][j - 1] & 0x01;
-          sum += (*screen)[i + 1][j + 0] & 0x01;
-        } else {
-          sum += (*screen)[i + 1][j + 1] & 0x01;
-          sum += (*screen)[i + 1][j + 0] & 0x01;
-          sum += (*screen)[i + 1][j - 1] & 0x01;
-          sum += (*screen)[i - 1][j + 1] & 0x01;
-          sum += (*screen)[i - 1][j + 0] & 0x01;
-          sum += (*screen)[i - 1][j - 1] & 0x01;
-          sum += (*screen)[i + 0][j + 1] & 0x01;
-          sum += (*screen)[i + 0][j - 1] & 0x01;
-        }
 
-        if ((*screen)[i][j] && sum == 2) {
-          (*future_screen)[i][j] = 1;
-        } else if (sum == 3) {
-          (*future_screen)[i][j] = 1;
-        } else {
-          (*future_screen)[i][j] = 0;
+          if ((*screen)[i][j] && sum == 2) {
+            (*future_screen)[i][j] = 1;
+          } else if (sum == 3) {
+            (*future_screen)[i][j] = 1;
+          } else {
+            (*future_screen)[i][j] = 0;
+          }
         }
       }
     }

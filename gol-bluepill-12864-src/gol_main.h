@@ -17,19 +17,34 @@
 
 #pragma once
 
+#include <libopencm3/cm3/nvic.h>
+#include <libopencm3/stm32/exti.h>
 #include <libopencm3/stm32/gpio.h>
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/spi.h>
+#include <libopencm3/stm32/timer.h>
 
 #include <string.h>
 
 #include "st7920_helper.h"
 
+#define INITIAL_PLAY_RATE_MS 200
+#define MIN_PLAY_RATE_MS 150
+#define MAX_PLAY_RATE_MS 5000
+
+#define ENCODER_INCREMENT_AMOUNT 100
+
 static void clock_setup(void);
 static void gpio_setup(void);
 static void spi_setup(void);
+static void timer_setup(void);
+static void shift_randomn_state(uint8_t num);
 static void randomize_state(void);
 int main(void);
+
+volatile bool button_pressed = false;
+volatile bool play_game = false;
+volatile uint16_t encoder_count = INITIAL_PLAY_RATE_MS * 10;
 
 static uint8_t state[SCREEN_WIDTH][SCREEN_HEIGHT] = {0};
 static uint8_t future_state[SCREEN_WIDTH][SCREEN_HEIGHT] = {0};
